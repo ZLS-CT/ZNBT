@@ -1,0 +1,10 @@
+{
+    "name": "ZNBTExamples",
+    "description": "Examples for using ZNBT.",
+    "author": "Zephy (Nvidia2080Ti)",
+    "requires": [
+        "ZNBT"
+    ],
+    "version": "1.0.0",
+    "entry": "examples.js"
+}

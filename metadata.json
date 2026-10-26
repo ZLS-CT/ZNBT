@@ -1,0 +1,9 @@
+{
+    "name": "ZNBT",
+    "description": "Utility module to edit item NBT. Supports 1.21.x, and 26.x.",
+    "author": "Zephy (Nvidia2080Ti)",
+    "requires": [
+        "ZCore"
+    ],
+    "version": "1.0.0"
+}
