@@ -20,16 +20,22 @@ const validNBTComponentTargets = {
 }
 
 const NBT_SETTERS = {
-    string: "putString",
-    int: "putInt",
-    double: "putDouble",
-    float: "putFloat",
-    long: "putLong",
-    short: "putShort",
     byte: "putByte",
+    short: "putShort",
+    int: "putInt",
+    long: "putLong",
+    float: "putFloat",
+    double: "putDouble",
+    string: "putString",
+    byteArray: "putByteArray",
+    intArray: "putIntArray",
+    longArray: "putLongArray",
     boolean: "putBoolean",
+    compoundTag: "put",
+    snbt: "put",
 }
 
+const NBT_ACTIONS_KEY = "nbtActions"
 const registeredNbtChanges = jvmObject("znbt.changes")
 let isDebug = false
 
@@ -58,6 +64,11 @@ function getChildCompound(parent, key, create) {
 }
 
 function putNbtValue(compound, key, value, type) {
+    if (type == "snbt") {
+        compound.put(key, TagParser.create(NbtOps.INSTANCE).parseFully(`${value}`))
+        return
+    }
+
     const setter = NBT_SETTERS[type]
     if (!setter) throw new Error(`Unknown NBT type: ${type}`)
 
@@ -126,7 +137,7 @@ function persistNbtAction(itemStack, key, action) {
     const json = JSON.stringify(action)
     const handler = validNBTComponentTargets.custom_data
     const root = handler.read(itemStack)
-    const store = getChildCompound(root, "nbtActions", true)
+    const store = getChildCompound(root, NBT_ACTIONS_KEY, true)
 
     const existing = store.getString(key).orElse(null)
     if (existing == json) return
@@ -149,7 +160,7 @@ function loadNbtActions(itemStack) {
     const root = validNBTComponentTargets.custom_data.read(itemStack)
     if (root == null) return actions
 
-    const store = getChildCompound(root, "nbtActions", false)
+    const store = getChildCompound(root, NBT_ACTIONS_KEY, false)
     if (store == null) return actions
 
     const keys = store.keySet().toArray()
@@ -195,7 +206,7 @@ function applyNbtChange(item, moduleName, actionData) {
     if (action.moduleName == null || action.path == null || action.action == null) {
         throw new Error("Invalid NBT action: missing moduleName, path, or action")
     }
-    if (action.path.split(".")[0] == "nbtActions") {
+    if (action.path.split(".")[0] == NBT_ACTIONS_KEY) {
         throw new Error("The nbtActions key is reserved")
     }
     if (!validNBTComponentTargets[action.component]) {
@@ -236,14 +247,14 @@ registerShared("znbt.tooltip", "ZCore:RenderItemTooltip", (itemStack) => {
     } catch (e) {
         if (isDebug) ChatDebug(`[RenderItemTooltip] Error: ${JSON.stringify(e)}`)
     }
-})
+}).setPriority(Priority.HIGHEST)
 
 export default NBT = {
-    set: function(item, moduleName, path, value, type, component = "custom_data", priority = 0) {
+    set: function(itemStack, moduleName, path, value, type, component = "custom_data", priority = 0) {
         if (value == undefined) throw new Error("ZNBT.set: value is undefined")
         if (type == undefined) throw new Error("ZNBT.set: type is undefined")
         if (component == undefined) throw new Error("ZNBT.set: component is undefined")
-        return applyNbtChange(item, moduleName, {
+        return applyNbtChange(itemStack, moduleName, {
             action: "set",
             component,
             path,
@@ -252,9 +263,9 @@ export default NBT = {
             priority,
         })
     },
-    remove: function(item, moduleName, path, component = "custom_data", priority = 0) {
+    remove: function(itemStack, moduleName, path, component = "custom_data", priority = 0) {
         if (component == undefined) throw new Error("ZNBT.remove: component is undefined")
-        return applyNbtChange(item, moduleName, {
+        return applyNbtChange(itemStack, moduleName, {
             action: "remove",
             component,
             path,
@@ -275,5 +286,24 @@ export default NBT = {
         Object.keys(registeredNbtChanges).forEach(uuid => {
             delete registeredNbtChanges[uuid][moduleName]
         })
+    },
+    clearItem: function(item, itemUUID) {
+        const itemStack = getItemStack(item)
+        if (itemStack != null) {
+            const customData = itemStack.get(DataComponents.CUSTOM_DATA)
+            if (customData != null) {
+                const nbt = customData.copyTag()
+                if (nbt.contains(NBT_ACTIONS_KEY)) {
+                    nbt.remove(NBT_ACTIONS_KEY)
+                    itemStack.set(DataComponents.CUSTOM_DATA, CustomData.of(nbt))
+                }
+            }
+        }
+
+        const uuid = itemUUID || (itemStack ? getSkyblockItemUUID(itemStack) : null)
+        if (uuid && registeredNbtChanges[uuid]) {
+            delete registeredNbtChanges[uuid]
+        }
+        return true
     },
 }
